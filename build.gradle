@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'org.maboroshi'
-def baseVersion = '2.1.2'
+def baseVersion = project.version.toString()
 
 def getGitHash = { ->
     if (System.getenv("GITHUB_SHA") != null) {
