@@ -11,7 +11,7 @@ import org.maboroshi.vessel.Vessel;
 public final class ProtectionService {
     private final List<ProtectionAdapter> adapters;
 
-    private ProtectionService(List<ProtectionAdapter> adapters) {
+    ProtectionService(List<ProtectionAdapter> adapters) {
         this.adapters = List.copyOf(adapters);
     }
 
@@ -61,6 +61,12 @@ public final class ProtectionService {
 
     public ProtectionResult canRelease(Player player, Location location) {
         return canPerformCheck(player, location, false);
+    }
+
+    /** The safe-space search must not turn a denied interaction into an allowed release nearby. */
+    public ProtectionResult canRelease(Player player, Location origin, Location destination) {
+        ProtectionResult originResult = canRelease(player, origin);
+        return originResult.allowed() ? canRelease(player, destination) : originResult;
     }
 
     private ProtectionResult canPerformCheck(Player player, Location location, boolean capture) {

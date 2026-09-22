@@ -97,6 +97,13 @@ reimplemented. When GriefPrevention denies an action, its specific denial reason
 player alongside Vessel's own message. GriefPrevention is a soft dependency: Vessel starts up
 normally without it, and this integration does not affect WorldGuard/Towny support.
 
+Release checks both the clicked block and the safe spawn destination. Searching for free space
+cannot bypass a protected claim at its edge or above its ceiling; owner and trusted permissions
+still come from GriefPrevention. Candidate blocks outside the current Folia region are skipped
+before accessing them. HanaToki protects its registered dungeon worlds by cancelling
+`VesselReleaseEvent` before any snapshot/Mythic spawn or item consumption, using its existing
+`hanatoki.build` permission. This does not depend on the captured entity's original spawn reason.
+
 **GriefPrevention on Lophinya (Lycohinya's Folia fork): works, but needs Lophinya's compat shim.**
 Plain GriefPrevention 16.18.7 (what Lycohinya's server actually runs) does not declare
 `folia-supported` and internally calls the legacy `Bukkit.getScheduler().scheduleSyncRepeatingTask`

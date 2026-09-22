@@ -107,6 +107,11 @@ public class ReleaseListener implements Listener {
         Block block = event.getClickedBlock();
         if (block == null) return;
 
+        if (!Bukkit.isOwnedByCurrentRegion(block.getLocation())) {
+            Messages.send(player, config.getMessageConfig().general.noSafeReleaseSpace);
+            return;
+        }
+
         Location loc = findSafeReleaseLocation(block, event.getBlockFace());
         if (loc == null) {
             Messages.send(player, config.getMessageConfig().general.noSafeReleaseSpace);
@@ -117,14 +122,14 @@ public class ReleaseListener implements Listener {
         // always near them, but region ownership is dynamic (merge/split), so it's not guaranteed to
         // be the same region at this exact moment. Everything below (GriefPrevention's claim lookup,
         // which is not itself Folia-aware, and the entity spawn) needs to run on the thread that
-        // actually owns `loc` — reject cleanly here rather than let a cross-region access throw.
+        // actually owns both the clicked block and `loc` — reject cleanly rather than cross regions.
         if (!Bukkit.isOwnedByCurrentRegion(loc)) {
             Log.debug("Release location is not owned by the current region thread; rejecting this release attempt.");
             Messages.send(player, config.getMessageConfig().general.noSafeReleaseSpace);
             return;
         }
 
-        ProtectionResult protection = plugin.getProtectionService().canRelease(player, loc);
+        ProtectionResult protection = plugin.getProtectionService().canRelease(player, block.getLocation(), loc);
         if (!protection.allowed()) {
             Messages.send(player, config.getMessageConfig().general.cannotReleaseHere);
             if (protection.denialReason() != null) {
@@ -286,15 +291,13 @@ public class ReleaseListener implements Listener {
         Block relativeBlock = block.getRelative(face);
         Location base = relativeBlock.getLocation().add(0.5, 0, 0.5);
 
-        if (relativeBlock.isPassable()
-                && relativeBlock.getRelative(BlockFace.UP).isPassable()) return base;
+        if (isSafeReleaseSpace(base)) return base;
 
         for (int yOffset = 0; yOffset <= 2; yOffset++) {
             for (int xOffset = -1; xOffset <= 1; xOffset++) {
                 for (int zOffset = -1; zOffset <= 1; zOffset++) {
                     Location candidate = base.clone().add(xOffset, yOffset, zOffset);
-                    if (candidate.getBlock().isPassable()
-                            && candidate.clone().add(0, 1, 0).getBlock().isPassable()) {
+                    if (isSafeReleaseSpace(candidate)) {
                         return candidate;
                     }
                 }
@@ -303,9 +306,15 @@ public class ReleaseListener implements Listener {
 
         for (int yOffset = 3; yOffset <= 5; yOffset++) {
             Location candidate = base.clone().add(0, yOffset, 0);
-            if (candidate.getBlock().isPassable()
-                    && candidate.clone().add(0, 1, 0).getBlock().isPassable()) return candidate;
+            if (isSafeReleaseSpace(candidate)) return candidate;
         }
         return null;
+    }
+
+    private boolean isSafeReleaseSpace(Location location) {
+        // Check ownership before touching candidate blocks, including across a region boundary.
+        return Bukkit.isOwnedByCurrentRegion(location)
+                && location.getBlock().isPassable()
+                && location.clone().add(0, 1, 0).getBlock().isPassable();
     }
 }
