@@ -1,8 +1,13 @@
 package org.maboroshi.vessel.command;
 
 import io.papermc.paper.command.brigadier.CommandSourceStack;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -79,7 +84,7 @@ public class VesselCommand {
         Messages.send(sender, config.getMessageConfig().help.header);
         Messages.send(sender, config.getMessageConfig().help.about);
         Messages.send(sender, config.getMessageConfig().help.help);
-        Messages.send(sender, config.getMessageConfig().help.give);
+        Messages.send(sender, config.getMessageConfig().help.give, Messages.tag("player", "<player>"));
         Messages.send(sender, config.getMessageConfig().help.reload);
     }
 
@@ -112,25 +117,76 @@ public class VesselCommand {
 
         item.setAmount(amount);
 
-        player.getInventory()
-                .addItem(item)
-                .values()
-                .forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+        final String targetName = player.getName();
+        final AtomicBoolean completed = new AtomicBoolean(false);
 
-        if (!isSilent) {
-            Messages.send(
-                    sender,
-                    config.getMessageConfig().commands.giveSender,
-                    Messages.tag("target", player.getName()),
-                    Messages.tag("amount", amount),
-                    Messages.tag("type", type));
-            Messages.send(
-                    player,
-                    config.getMessageConfig().commands.givePlayer,
-                    Messages.tag("amount", amount),
-                    Messages.tag("type", type));
-        } else {
-            Log.info("Gave " + player.getName() + " " + amount + " " + type + " vessel(s) silently.");
+        Runnable onRetired = () -> {
+            if (completed.compareAndSet(false, true)) {
+                Log.warn("Failed to give vessel(s): player " + targetName + " retired or disconnected before delivery.");
+                Messages.send(
+                        sender,
+                        "<prefix> <red>Failed to give vessel(s): player retired or disconnected before delivery.</red>");
+            }
+        };
+
+        if (!player.isOnline()) {
+            onRetired.run();
+            return;
+        }
+
+        ScheduledTask scheduledTask = player.getScheduler().run(
+                plugin,
+                task -> {
+                    if (completed.get()) {
+                        return;
+                    }
+                    if (!player.isOnline() || !player.isValid()) {
+                        onRetired.run();
+                        return;
+                    }
+
+                    try {
+                        Location loc = player.getLocation();
+                        World world = player.getWorld();
+
+                        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
+                        if (!leftovers.isEmpty()) {
+                            for (ItemStack leftover : leftovers.values()) {
+                                world.dropItemNaturally(loc, leftover);
+                            }
+                        }
+
+                        if (completed.compareAndSet(false, true)) {
+                            if (!isSilent) {
+                                Messages.send(
+                                        sender,
+                                        config.getMessageConfig().commands.giveSender,
+                                        Messages.tag("target", player.getName()),
+                                        Messages.tag("amount", amount),
+                                        Messages.tag("type", type));
+                                Messages.send(
+                                        player,
+                                        config.getMessageConfig().commands.givePlayer,
+                                        Messages.tag("amount", amount),
+                                        Messages.tag("type", type));
+                            } else {
+                                Log.info("Gave " + player.getName() + " " + amount + " " + type + " vessel(s) silently.");
+                            }
+                        }
+                    } catch (Throwable t) {
+                        Log.error("Error during vessel delivery to " + targetName + ": " + t.getMessage());
+                        if (completed.compareAndSet(false, true)) {
+                            Messages.send(
+                                    sender,
+                                    "<prefix> <red>An error occurred while giving vessel(s) to <target>.</red>",
+                                    Messages.tag("target", targetName));
+                        }
+                    }
+                },
+                onRetired);
+
+        if (scheduledTask == null) {
+            onRetired.run();
         }
     }
 }

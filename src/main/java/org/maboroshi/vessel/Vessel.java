@@ -108,7 +108,8 @@ public final class Vessel extends JavaPlugin {
     public void onDisable() {
         // PlugMan-hotswap safety: null out static state so nothing outlives this classloader across
         // an unload/reload cycle. Listeners/commands are torn down by Bukkit's own plugin-disable
-        // handling; there are no schedulers, open connections, or background tasks of Vessel's own
+        // handling; command delivery uses transient entity scheduler tasks bound to this plugin,
+        // and there are no persistent schedulers, open connections, or background tasks of Vessel's own
         // to stop here (CooldownHandler's Guava cache and InFlightGuard's set both just get GC'd
         // with this instance).
         plugin = null;
