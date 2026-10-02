@@ -5,6 +5,11 @@ All notable changes to this fork are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Minecraft 26.3: cloud-paper 2.0.1 finds Paper 26.3's renamed `CraftItemStack` mirror methods;
+  2.0.0 failed at enable with "Couldn't find asBukkitCopy or asCraftMirror method".
+
 ### Added
 
 - Versioned entity payload storage: captured entity data is now wrapped in an envelope recording
