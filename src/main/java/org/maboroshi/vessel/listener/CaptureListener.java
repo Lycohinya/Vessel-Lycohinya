@@ -145,8 +145,10 @@ public class CaptureListener implements Listener {
                             Messages.tag("entity_type", mobId),
                             Messages.tag("spawn_reason", reason),
                             Messages.tagParsed("entity_name", safeMobName));
-                    Log.debug("Player " + player.getName() + " tried to capture entity spawned by reason " + reason
-                            + ".");
+                    Log.info("Capture denied by spawn-reason filter: " + player.getName() + " -> " + mobId + " "
+                            + entity.getUniqueId() + " (vessel:spawn_reason=" + reason + ", from_vessel="
+                            + entity.getPersistentDataContainer().has(Keys.FROM_VESSEL) + ", bukkit_reason="
+                            + entity.getEntitySpawnReason() + ", template=" + vesselType + ")");
                     return;
                 }
             }
@@ -177,7 +179,8 @@ public class CaptureListener implements Listener {
             }
 
             if (!VesselUtils.isAllowed(mobId, mobs)) {
-                Log.debug("Player " + player.getName() + " tried to capture a disallowed entity: " + mobId);
+                Log.info("Capture denied by entity filter: " + player.getName() + " -> " + mobId + " "
+                        + entity.getUniqueId() + " (template=" + vesselType + ")");
                 Messages.send(
                         player,
                         config.getMessageConfig().general.blacklistedEntity,
@@ -197,11 +200,6 @@ public class CaptureListener implements Listener {
 
         if (plugin.getCooldownHandler().isOnCooldown(player.getUniqueId(), config.getMainConfig().cooldown)) return;
 
-        // If clickedMob is a passenger inside a vehicle, dismount it so the vehicle remains untouched in the world
-        if (clickedMob.isInsideVehicle()) {
-            clickedMob.leaveVehicle();
-        }
-
         String rawTargetName = clickedMob.getName() != null
                 ? clickedMob.getName()
                 : clickedMob.getType().name();
@@ -217,26 +215,28 @@ public class CaptureListener implements Listener {
         String targetName =
                 mm.serialize(LegacyComponentSerializer.legacySection().deserialize(rawTargetName));
 
-        Component customNameComponent = clickedMob.customName();
-        if (customNameComponent != null) {
-            String legacyRepresentation =
-                    LegacyComponentSerializer.legacySection().serialize(customNameComponent);
-            Component cleanedComponent =
-                    LegacyComponentSerializer.legacySection().deserialize(legacyRepresentation);
-            clickedMob.customName(cleanedComponent);
-        }
-
         // Serialize first: build and validate the fully-formed result item before touching the mob
         // or the vessel item in hand, so a failure here (e.g. entity too complex to store safely)
-        // never consumes the vessel or removes the entity.
+        // never consumes the vessel or removes the entity. The stored copy gets the cleaned custom
+        // name; the live mob gets its original name back right after the snapshot, so a capture that
+        // fails or is cancelled leaves it exactly as it was.
         String newVesselId = UUID.randomUUID().toString();
         CaptureResult captureResult;
+        Component customNameComponent = clickedMob.customName();
         try {
+            if (customNameComponent != null) {
+                String legacyRepresentation =
+                        LegacyComponentSerializer.legacySection().serialize(customNameComponent);
+                clickedMob.customName(LegacyComponentSerializer.legacySection().deserialize(legacyRepresentation));
+            }
             captureResult = EntitySnapshotAdapter.capture(clickedMob, newVesselId);
         } catch (VesselDataException e) {
-            Log.debug("Capture failed for entity type " + clickedMob.getType() + ": " + e.getMessage());
+            Log.info("Capture failed for " + player.getName() + " -> " + clickedMob.getType() + " "
+                    + clickedMob.getUniqueId() + ": " + e.getReason() + " - " + e.getMessage());
             Messages.send(player, config.getMessageConfig().general.cannotCaptureTooComplex);
             return;
+        } finally {
+            if (customNameComponent != null) clickedMob.customName(customNameComponent);
         }
 
         ItemStack resultItem = plugin.getVesselManager().createFilledVessel(vesselType, clickedMob, targetName);
@@ -259,9 +259,13 @@ public class CaptureListener implements Listener {
             resultMeta.getPersistentDataContainer().set(Keys.MYTHIC_ID, PersistentDataType.STRING, mythicId);
 
         String spawnReason = clickedMob.getPersistentDataContainer().get(Keys.SPAWN_REASON, PersistentDataType.STRING);
-        if (spawnReason == null || spawnReason.isEmpty())
+        // Bukkit's own spawn reason is only a source for creatures Vessel never released: on a released
+        // one it is the release event's CUSTOM, not where the creature originally came from.
+        if ((spawnReason == null || spawnReason.isEmpty())
+                && !clickedMob.getPersistentDataContainer().has(Keys.FROM_VESSEL))
             spawnReason = clickedMob.getEntitySpawnReason().name();
-        resultMeta.getPersistentDataContainer().set(Keys.SPAWN_REASON, PersistentDataType.STRING, spawnReason);
+        if (spawnReason != null && !spawnReason.isEmpty())
+            resultMeta.getPersistentDataContainer().set(Keys.SPAWN_REASON, PersistentDataType.STRING, spawnReason);
         resultItem.setItemMeta(resultMeta);
 
         VesselCaptureEvent captureEvent =
@@ -269,6 +273,11 @@ public class CaptureListener implements Listener {
         plugin.getServer().getPluginManager().callEvent(captureEvent);
 
         if (captureEvent.isCancelled()) return;
+
+        // If clickedMob is a passenger inside a vehicle, dismount it so the vehicle remains untouched in the world
+        if (clickedMob.isInsideVehicle()) {
+            clickedMob.leaveVehicle();
+        }
 
         itemInHand.subtract();
 

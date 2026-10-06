@@ -37,17 +37,9 @@ public final class EntitySnapshotAdapter {
 
     /** Captures {@code entity} into a fresh, current-schema {@link VesselPayload}. */
     public static CaptureResult capture(Entity entity, String vesselId) throws VesselDataException {
+        // No fallback to a freshly created default entity of the same type: that would store a
+        // different creature (no trades, name, equipment, PDC) under this one's vessel.
         EntitySnapshot snapshot = entity.createSnapshot();
-        if (snapshot == null) {
-            Class<? extends Entity> entityClass = entity.getType().getEntityClass();
-            if (entityClass == null) {
-                throw new VesselDataException(
-                        Reason.MALFORMED, "No EntitySnapshot and no entity class for type " + entity.getType());
-            }
-            Entity temp = entity.getWorld().createEntity(entity.getLocation(), entityClass);
-            snapshot = temp.createSnapshot();
-        }
-
         if (snapshot == null) {
             throw new VesselDataException(
                     Reason.MALFORMED, "Failed to create an EntitySnapshot for entity type " + entity.getType());

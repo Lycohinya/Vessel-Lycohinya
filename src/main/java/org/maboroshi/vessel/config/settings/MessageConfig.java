@@ -78,6 +78,11 @@ public class MessageConfig {
             public String noSafeReleaseSpace = "<prefix> There is no safe space to release this vessel.";
 
             @Comment(
+                    "Message shown when the server refused to add the stored creature to the world (for example another plugin cancelled the spawn). The vessel is kept unchanged.")
+            public String releaseFailed =
+                    "<prefix> The <gray><entity_type></gray> could not be released here. Your vessel was kept.";
+
+            @Comment(
                     "Follow-up line shown after a capture/release denial when the protection plugin (e.g. GriefPrevention) provided a specific reason. Supports <reason>.")
             public String protectionDenialReason = "<prefix> <gray><reason></gray>";
 

@@ -7,6 +7,22 @@ All notable changes to this fork are documented here. Format loosely follows
 
 ### Fixed
 
+- Release no longer re-fires the creature's original spawn reason (NATURAL, BREEDING, ...). The
+  release event now uses CUSTOM like any plugin spawn, so other plugins' natural-spawn filters stop
+  cancelling releases ("Failed to restore compound entity: One or more entities failed to spawn").
+- Each released creature, passengers included, keeps the `vessel:spawn_reason` its own snapshot
+  carried. The item's recorded reason is only a fallback for the root; with no recorded source the
+  key is left unset instead of being stamped CUSTOM, which used to make such creatures impossible
+  to capture again ("You cannot use the vessel on ..."). Capture no longer falls back to Bukkit's
+  spawn reason for a creature Vessel already released, since that is the release event's CUSTOM.
+- A release is only a success once every node is in the world, mounted and still alive; anything
+  else rolls back every entity this release added (not only the ones still `isValid()`) and keeps
+  the vessel. Failures are logged at WARN with the failing node, stage, `spawnAt` result,
+  valid/inWorld state and whether our spawn event was cancelled, and the player gets the new
+  `release-failed` message instead of "no safe space".
+- Capture denials are logged at INFO and say which filter (spawn reason or entity type) refused.
+- Capture no longer dismounts or renames the live mob before it succeeds, and no longer stores a
+  freshly created default entity when the server returns no snapshot (it refuses instead).
 - Minecraft 26.3: cloud-paper 2.0.1 finds Paper 26.3's renamed `CraftItemStack` mirror methods;
   2.0.0 failed at enable with "Couldn't find asBukkitCopy or asCraftMirror method".
 

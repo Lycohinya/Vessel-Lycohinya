@@ -206,7 +206,6 @@ public class ReleaseListener implements Listener {
 
         if (releaseEvent.isCancelled()) return;
 
-        CreatureSpawnEvent.SpawnReason spawnReason = resolveSpawnReason(savedReason);
         Entity releasedMob = null;
         String mythicId = meta.getPersistentDataContainer().get(Keys.MYTHIC_ID, PersistentDataType.STRING);
         boolean mythic = mythicId != null && !mythicId.isEmpty();
@@ -235,10 +234,13 @@ public class ReleaseListener implements Listener {
         if (releasedMob == null) {
             org.maboroshi.vessel.storage.entity.CompoundEntityRestorer.RestoreResult restoreResult =
                     org.maboroshi.vessel.storage.entity.CompoundEntityRestorer.restore(
-                            tree, loc, spawnReason, savedReason);
+                            tree, loc, CreatureSpawnEvent.SpawnReason.CUSTOM, savedReason);
             if (!restoreResult.success()) {
-                Log.error("Failed to restore compound entity: " + restoreResult.errorMessage());
-                Messages.send(player, config.getMessageConfig().general.noSafeReleaseSpace);
+                Log.warn("Failed to restore compound entity for " + player.getName() + " (vessel " + vesselIdOf(meta)
+                        + ", " + mobId + " at " + loc.getWorld().getName() + " " + loc.getBlockX() + ","
+                        + loc.getBlockY() + "," + loc.getBlockZ() + "); vessel kept: " + restoreResult.errorMessage());
+                Messages.send(
+                        player, config.getMessageConfig().general.releaseFailed, Messages.tag("entity_type", mobId));
                 return;
             }
             releasedMob = restoreResult.rootEntity();
@@ -275,16 +277,9 @@ public class ReleaseListener implements Listener {
         cooldownHandler.setCooldown(player.getUniqueId());
     }
 
-    private CreatureSpawnEvent.SpawnReason resolveSpawnReason(String savedReason) {
-        if (savedReason == null || savedReason.isEmpty()) {
-            return CreatureSpawnEvent.SpawnReason.CUSTOM;
-        }
-        try {
-            return CreatureSpawnEvent.SpawnReason.valueOf(savedReason.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException ex) {
-            Log.debug("Unknown stored spawn reason '" + savedReason + "', falling back to CUSTOM.");
-            return CreatureSpawnEvent.SpawnReason.CUSTOM;
-        }
+    private static String vesselIdOf(ItemMeta meta) {
+        String id = meta.getPersistentDataContainer().get(Keys.VESSEL_ID, PersistentDataType.STRING);
+        return id != null ? id : "legacy";
     }
 
     private Location findSafeReleaseLocation(Block block, BlockFace face) {
